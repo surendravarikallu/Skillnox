@@ -25,36 +25,68 @@ export default function AntiCheat({
   const [idleTime, setIdleTime] = useState(0);
   const [isIdle, setIsIdle] = useState(false);
 
-  // Tab visibility detection
+  // Tab visibility detection + fallbacks for environments where visibilitychange may not fire reliably
   useEffect(() => {
     if (!isActive) return;
 
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        const newTabSwitches = tabSwitches + 1;
-        setTabSwitches(newTabSwitches);
-        
+    const lastTriggerTimeRef = { current: 0 };
+    const cooldownMs = 750; // prevent double counting when multiple events fire together
+
+    const incrementForTabLeave = (source: string) => {
+      const now = Date.now();
+      if (now - lastTriggerTimeRef.current < cooldownMs) return;
+      lastTriggerTimeRef.current = now;
+
+      setTabSwitches(prev => {
+        const nextCount = prev + 1;
+
         // Show different warnings based on tab switch count
-        if (newTabSwitches === 1) {
-          // First tab switch - regular warning
-          showWarningModal('tab_switch');
-          onViolation?.('tab_switch');
-        } else if (newTabSwitches === 2) {
-          // Second tab switch - red warning with "Last Warning"
-          showWarningModal('tab_switch_final');
-          onViolation?.('tab_switch_final');
-        } else if (newTabSwitches >= 3) {
-          // Third tab switch - disqualification
+        if (nextCount < maxTabSwitches) {
+          // Warnings before final
+          if (nextCount === maxTabSwitches - 1) {
+            showWarningModal('tab_switch_final');
+            onViolation?.('tab_switch_final');
+          } else {
+            showWarningModal('tab_switch');
+            onViolation?.('tab_switch');
+          }
+        } else {
+          // Limit reached or exceeded
           showWarningModal('tab_switch_disqualified');
           onViolation?.('tab_switch_limit');
         }
+
+        return nextCount;
+      });
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden || document.visibilityState === 'hidden') {
+        incrementForTabLeave('visibilitychange');
       }
-      // Removed the tab switch count reduction logic to prevent resetting
+    };
+
+    const handleWindowBlur = () => {
+      // Some environments report blur without visibilitychange; use document.hasFocus as a hint
+      if (!document.hasFocus()) {
+        incrementForTabLeave('blur');
+      }
+    };
+
+    const handlePageHide = () => {
+      incrementForTabLeave('pagehide');
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [isActive, tabSwitches, maxTabSwitches, onViolation]);
+    window.addEventListener('blur', handleWindowBlur);
+    window.addEventListener('pagehide', handlePageHide);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleWindowBlur);
+      window.removeEventListener('pagehide', handlePageHide);
+    };
+  }, [isActive, maxTabSwitches, onViolation]);
 
   // Fullscreen monitoring
   useEffect(() => {
