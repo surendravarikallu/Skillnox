@@ -45,7 +45,7 @@ export default function ImportQuestions() {
   const [selectedContest, setSelectedContest] = useState<string>('');
 
   // Fetch contests for selection
-  const { data: contests } = useQuery({
+  const { data: contests } = useQuery<any[]>({
     queryKey: ['/api/contests'],
     enabled: !!user && user.role === 'admin',
   });

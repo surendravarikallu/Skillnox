@@ -14,7 +14,7 @@ interface AntiCheatProps {
 export default function AntiCheat({ 
   isActive = false, 
   onViolation,
-  maxTabSwitches = 2,
+  maxTabSwitches = 3,
   idleTimeout = 30
 }: AntiCheatProps) {
   const [violations, setViolations] = useState<string[]>([]);
@@ -34,26 +34,22 @@ export default function AntiCheat({
         const newTabSwitches = tabSwitches + 1;
         setTabSwitches(newTabSwitches);
         
-        // Only show warning for first few switches, don't immediately disqualify
-        if (newTabSwitches <= maxTabSwitches) {
+        // Show different warnings based on tab switch count
+        if (newTabSwitches === 1) {
+          // First tab switch - regular warning
           showWarningModal('tab_switch');
-        } else if (newTabSwitches === maxTabSwitches + 1) {
-          // Final warning before disqualification
+          onViolation?.('tab_switch');
+        } else if (newTabSwitches === 2) {
+          // Second tab switch - red warning with "Last Warning"
           showWarningModal('tab_switch_final');
-        } else if (newTabSwitches > maxTabSwitches + 1) {
-          // Only disqualify after multiple warnings
-          addViolation('tab_switch_limit');
+          onViolation?.('tab_switch_final');
+        } else if (newTabSwitches >= 3) {
+          // Third tab switch - disqualification
+          showWarningModal('tab_switch_disqualified');
           onViolation?.('tab_switch_limit');
         }
-      } else {
-        // When tab becomes visible again, reset the counter after a delay
-        // This allows for legitimate tab switches (like checking email, etc.)
-        setTimeout(() => {
-          if (document.visibilityState === 'visible' && tabSwitches > 0) {
-            setTabSwitches(prev => Math.max(0, prev - 1));
-          }
-        }, 5000); // 5 second delay before reducing count
       }
+      // Removed the tab switch count reduction logic to prevent resetting
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -166,8 +162,14 @@ export default function AntiCheat({
         };
       case 'tab_switch_final':
         return {
-          title: 'Final Tab Switch Warning!',
+          title: 'Last Warning!',
           message: `You have switched tabs ${tabSwitches} time(s). One more violation will result in disqualification.`,
+          severity: 'error'
+        };
+      case 'tab_switch_disqualified':
+        return {
+          title: 'You are disqualified!',
+          message: 'You have exceeded the maximum number of tab switches. Your contest has been automatically submitted.',
           severity: 'error'
         };
       case 'fullscreen_exit':

@@ -49,19 +49,19 @@ export default function EditContest() {
   const [mcqQuestions, setMcqQuestions] = useState<any[]>([]);
 
   // Fetch existing contest data
-  const { data: existingContest, isLoading: contestLoading } = useQuery({
+  const { data: existingContest, isLoading: contestLoading } = useQuery<any>({
     queryKey: ['/api/contests', contestId],
     enabled: !!contestId && !!user && user.role === 'admin',
   });
 
   // Fetch existing problems
-  const { data: existingProblems, isLoading: problemsLoading } = useQuery({
+  const { data: existingProblems, isLoading: problemsLoading } = useQuery<any[]>({
     queryKey: ['/api/contests', contestId, 'problems'],
     enabled: !!contestId && !!user && user.role === 'admin',
   });
 
   // Fetch existing MCQ questions
-  const { data: existingMcqQuestions, isLoading: mcqLoading } = useQuery({
+  const { data: existingMcqQuestions, isLoading: mcqLoading } = useQuery<any[]>({
     queryKey: ['/api/contests', contestId, 'mcq-questions'],
     enabled: !!contestId && !!user && user.role === 'admin',
   });

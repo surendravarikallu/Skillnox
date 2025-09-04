@@ -119,7 +119,6 @@ export default function CreateContest() {
         points: 40,
         timeLimit: 5000,
         memoryLimit: 256,
-        orderIndex: problems.length + 1,
         testCases: [
           { input: "", expectedOutput: "", isVisible: true, points: 20 },
           { input: "", expectedOutput: "", isVisible: true, points: 20 },
@@ -182,7 +181,6 @@ export default function CreateContest() {
         options: [{ text: "", isCorrect: false }],
         isMultipleChoice: false,
         points: 5,
-        orderIndex: mcqQuestions.length + 1,
       },
     ]);
   };

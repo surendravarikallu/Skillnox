@@ -12,6 +12,7 @@ import AdminContests from "@/pages/admin/contests";
 import CreateContest from "@/pages/admin/create-contest";
 import EditContest from "@/pages/admin/edit-contest";
 import ViewContest from "@/pages/admin/view-contest";
+import ViewStudents from "@/pages/admin/view-students";
 import ImportQuestions from "@/pages/admin/import-questions";
 import ImportStudents from "@/pages/admin/import-students";
 import ExportReports from "@/pages/admin/export-reports";
@@ -33,12 +34,16 @@ function Router() {
     );
   }
 
+
+
   return (
     <Switch>
       {!isAuthenticated ? (
         <Switch>
           <Route path="/" component={Landing} />
           <Route path="/auth" component={AuthPage} />
+          <Route path="/login" component={AuthPage} />
+          <Route path="/signin" component={AuthPage} />
           <Route component={NotFound} />
         </Switch>
       ) : user && user.role === 'admin' ? (
@@ -49,6 +54,7 @@ function Router() {
           <Route path="/admin/create-contest" component={CreateContest} />
           <Route path="/admin/edit-contest/:id" component={EditContest} />
           <Route path="/admin/view-contest/:contestId" component={ViewContest} />
+          <Route path="/admin/view-students" component={ViewStudents} />
           <Route path="/admin/import-questions" component={ImportQuestions} />
           <Route path="/admin/import-students" component={ImportStudents} />
           <Route path="/admin/export-reports" component={ExportReports} />

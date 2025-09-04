@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,10 +20,12 @@ import {
 import { motion } from "framer-motion";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { Link } from "wouter";
+import ProfileDialog from "@/components/profile-dialog";
 
 export default function AdminDashboard() {
   const { toast } = useToast();
   const { isAuthenticated, isLoading, user } = useAuth();
+  const queryClient = useQueryClient();
 
   // Redirect to home if not authenticated
   useEffect(() => {
@@ -73,6 +75,47 @@ export default function AdminDashboard() {
   const { data: submissions } = useQuery<any[]>({
     queryKey: ['/api/submissions'],
     enabled: !!user && user.role === 'admin',
+  });
+
+  // Fetch all participants for all contests (reuse export-reports endpoint data shape)
+  const { data: allContestParticipants } = useQuery<any[]>({
+    queryKey: ['/api/contests', 'participants-all'],
+    queryFn: async () => {
+      const res = await fetch('/api/contests');
+      const contests = await res.json();
+      const results: any[] = [];
+      for (const c of contests) {
+        const pr = await fetch(`/api/contests/${c.id}/participants`, { credentials: 'include' });
+        if (pr.ok) {
+          const plist = await pr.json();
+          plist.forEach((p: any) => results.push({ ...p, contestTitle: c.title }));
+        }
+      }
+      return results;
+    },
+    enabled: !!user && user.role === 'admin',
+  });
+
+  const allowRetakeMutation = useMutation({
+    mutationFn: async ({ contestId, userId }: { contestId: string; userId: string }) => {
+      const response = await fetch(`/api/contests/${contestId}/allow-retake`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ userId }),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to allow retake');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: 'Allowed', description: 'Student can retake the contest.' });
+      queryClient.invalidateQueries({ queryKey: ['/api/contests', 'participants-all'] });
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to allow retake', variant: 'destructive' });
+    }
   });
 
   if (isLoading || !user) {
@@ -140,11 +183,18 @@ export default function AdminDashboard() {
       color: "from-indigo-500 to-indigo-600",
     },
     {
+      title: "View Students",
+      description: "View and edit student information and details",
+      icon: <Users className="w-6 h-6" />,
+      href: "/admin/view-students",
+      color: "from-blue-500 to-blue-600",
+    },
+    {
       title: "Import Students",
       description: "Bulk upload student data via CSV file",
       icon: <Upload className="w-6 h-6" />,
       href: "/admin/import-students",
-      color: "from-blue-500 to-blue-600",
+      color: "from-cyan-500 to-cyan-600",
     },
     {
       title: "Import Questions",
@@ -236,6 +286,7 @@ mcq,Capital of France,Geography question,medium,5,0,What is the capital of Franc
                 <div className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></div>
                 System Online
               </Badge>
+              {user && <ProfileDialog user={user} />}
               <Button 
                 onClick={handleLogout}
                 variant="outline"
@@ -305,6 +356,56 @@ mcq,Capital of France,Geography question,medium,5,0,What is the capital of Franc
                 </Link>
               </motion.div>
             ))}
+          </div>
+        </div>
+
+        {/* Disqualified Students */}
+        <div className="mb-10">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-bold text-slate-900">Disqualified Students</h2>
+          </div>
+          <div className="grid gap-4">
+            {(() => {
+              const disq = (allContestParticipants?.filter((p: any) => p.isDisqualified) || []);
+              const dedup: Record<string, any> = {};
+              disq.forEach((p: any) => {
+                const key = `${p.contestId}-${p.userId}`;
+                if (!dedup[key]) dedup[key] = p;
+              });
+              const unique = Object.values(dedup) as any[];
+              return unique.length > 0 ? (
+                unique.map((p: any) => (
+                  <Card key={`${p.contestId}-${p.userId}`}>
+                    <CardContent className="p-6 flex items-center justify-between">
+                      <div>
+                        <div className="font-semibold text-slate-900">{p.user?.firstName} {p.user?.lastName} ({p.user?.email})</div>
+                        <div className="text-sm text-slate-600">Contest: {p.contestTitle}</div>
+                        <div className="text-xs text-slate-500">Tab switches: {p.tabSwitches || 0}</div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-red-100 text-red-700">Disqualified</Badge>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => allowRetakeMutation.mutate({ contestId: p.contestId, userId: p.userId })}
+                          className="text-blue-600 hover:text-blue-700"
+                        >
+                          Allow Retake
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
+              ) : (
+                <Card>
+                  <CardContent className="p-12 text-center">
+                    <Users className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-slate-900 mb-2">No disqualified students</h3>
+                    <p className="text-slate-600">Students who are disqualified will appear here for quick review.</p>
+                  </CardContent>
+                </Card>
+              );
+            })()}
           </div>
         </div>
 

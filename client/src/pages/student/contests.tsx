@@ -14,12 +14,14 @@ import {
   PlayCircle,
   CheckCircle,
   AlertCircle,
-  Timer
+  Timer,
+  XCircle
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
+import ProfileDialog from "@/components/profile-dialog";
 
 export default function StudentContests() {
   const { toast } = useToast();
@@ -41,14 +43,38 @@ export default function StudentContests() {
     }
   }, [isAuthenticated, isLoading, toast]);
 
-  const { data: contests, isLoading: contestsLoading } = useQuery({
+  const { data: contests, isLoading: contestsLoading } = useQuery<any[]>({
     queryKey: ['/api/contests'],
     enabled: !!user,
   });
 
-  const { data: activeContests } = useQuery({
+  const { data: activeContests } = useQuery<any[]>({
     queryKey: ['/api/contests/active'],
     enabled: !!user,
+  });
+
+  // Check disqualification status for all contests
+  const { data: disqualificationStatuses } = useQuery({
+    queryKey: ['/api/contests/disqualifications'],
+    queryFn: async () => {
+      if (!contests) return {};
+      
+      const statuses: Record<string, boolean> = {};
+      await Promise.all(
+        (contests || []).map(async (contest: any) => {
+          try {
+            const response = await apiRequest('GET', `/api/contests/${contest.id}/disqualified`);
+            const result = await response.json();
+            statuses[contest.id] = result.isDisqualified;
+          } catch (error) {
+            console.error(`Failed to check disqualification for contest ${contest.id}:`, error);
+            statuses[contest.id] = false;
+          }
+        })
+      );
+      return statuses;
+    },
+    enabled: !!user && !!contests,
   });
 
   const joinContestMutation = useMutation({
@@ -76,6 +102,19 @@ export default function StudentContests() {
         }, 500);
         return;
       }
+      
+      // Check if it's a disqualification error
+      if (error instanceof Error && error.message.includes('disqualified')) {
+        toast({
+          title: "Access Denied",
+          description: "You are disqualified from this contest and cannot rejoin.",
+          variant: "destructive",
+        });
+        // Refresh disqualification statuses
+        queryClient.invalidateQueries({ queryKey: ['/api/contests/disqualifications'] });
+        return;
+      }
+      
       toast({
         title: "Error",
         description: "Failed to join contest. Please try again.",
@@ -193,6 +232,7 @@ export default function StudentContests() {
                   {activeContests?.length || 0} Live Contests
                 </span>
               </div>
+              {user && <ProfileDialog user={user} />}
               <Button 
                 variant="outline"
                 onClick={handleLogout}
@@ -208,14 +248,14 @@ export default function StudentContests() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Active Contests Section */}
-        {activeContests && activeContests.length > 0 && (
+        {activeContests && (activeContests as any[]).length > 0 && (
           <div className="mb-8">
             <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center">
               <div className="w-2 h-2 bg-green-500 rounded-full mr-3 animate-pulse"></div>
               Live Contests
             </h2>
             <div className="grid gap-6">
-              {activeContests.map((contest: any, index: number) => {
+              {(activeContests as any[]).map((contest: any, index: number) => {
                 const status = getContestStatus(contest);
                 return (
                   <motion.div
@@ -254,19 +294,30 @@ export default function StudentContests() {
                           </div>
 
                           <div className="text-right">
-                            <Button
-                              onClick={() => joinContestMutation.mutate(contest.id)}
-                              disabled={joinContestMutation.isPending}
-                              className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-semibold px-6 py-3 rounded-lg transition-all duration-200 transform hover:scale-105"
-                              data-testid={`button-join-contest-${contest.id}`}
-                            >
-                              {joinContestMutation.isPending ? (
-                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                              ) : (
-                                <PlayCircle className="w-4 h-4 mr-2" />
-                              )}
-                              Join Contest
-                            </Button>
+                            {disqualificationStatuses?.[contest.id] ? (
+                              <Button
+                                disabled
+                                className="bg-red-500 text-white font-semibold px-6 py-3 rounded-lg"
+                                data-testid={`button-disqualified-${contest.id}`}
+                              >
+                                <XCircle className="w-4 h-4 mr-2" />
+                                Disqualified
+                              </Button>
+                            ) : (
+                              <Button
+                                onClick={() => joinContestMutation.mutate(contest.id)}
+                                disabled={joinContestMutation.isPending}
+                                className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-semibold px-6 py-3 rounded-lg transition-all duration-200 transform hover:scale-105"
+                                data-testid={`button-join-contest-${contest.id}`}
+                              >
+                                {joinContestMutation.isPending ? (
+                                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                                ) : (
+                                  <PlayCircle className="w-4 h-4 mr-2" />
+                                )}
+                                Join Contest
+                              </Button>
+                            )}
                           </div>
                         </div>
                       </CardContent>
@@ -296,9 +347,9 @@ export default function StudentContests() {
                 </Card>
               ))}
             </div>
-          ) : contests && contests.length > 0 ? (
+          ) : contests && (contests as any[]).length > 0 ? (
             <div className="grid gap-4">
-              {contests.map((contest: any, index: number) => {
+              {(contests as any[]).map((contest: any, index: number) => {
                 const status = getContestStatus(contest);
                 const startDateTime = formatDateTime(contest.startTime);
                 const endDateTime = formatDateTime(contest.endTime);
@@ -349,7 +400,12 @@ export default function StudentContests() {
                               <span className="ml-1">{status.label}</span>
                             </Badge>
                             
-                            {status.canJoin ? (
+                            {disqualificationStatuses?.[contest.id] ? (
+                              <Button disabled variant="outline" className="text-red-600 border-red-300">
+                                <XCircle className="w-4 h-4 mr-2" />
+                                Disqualified
+                              </Button>
+                            ) : status.canJoin ? (
                               <Button
                                 onClick={() => joinContestMutation.mutate(contest.id)}
                                 disabled={joinContestMutation.isPending}

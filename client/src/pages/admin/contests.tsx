@@ -59,7 +59,7 @@ export default function AdminContests() {
     }
   }, [user, toast]);
 
-  const { data: contests, isLoading: contestsLoading } = useQuery({
+  const { data: contests, isLoading: contestsLoading } = useQuery<any[]>({
     queryKey: ['/api/contests'],
     enabled: !!user && user.role === 'admin',
   });

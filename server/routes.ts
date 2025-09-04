@@ -381,9 +381,7 @@ async function runTestCase(code: string, language: string, testCase: any, proble
         }
         
         // Debug logging to see what's being sent
-        console.log(`Input normalization for ${language}:`);
-        console.log(`  Original: "${testCase.input}"`);
-        console.log(`  Normalized: "${input.replace(/\n/g, '\\n')}"`);
+            // Debug logging removed to reduce log noise
         
         process.stdin.write(input);
         process.stdin.end();
@@ -448,19 +446,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const isAdmin = async (req: Request, res: Response, next: any) => {
     try {
       const userId = req.session.userId;
+      console.log('isAdmin middleware - userId:', userId);
       if (!userId) {
+        console.log('No userId in session');
         return res.status(401).json({ message: "Authentication required" });
       }
       
       const user = await storage.getUserById(userId);
+      console.log('isAdmin middleware - user:', user ? { id: user.id, role: user.role } : 'null');
       if (!user || user.role !== 'admin') {
+        console.log('User not found or not admin');
         return res.status(403).json({ message: "Admin access required" });
       }
+      console.log('Admin access granted');
       next();
     } catch (error) {
+      console.error('isAdmin middleware error:', error);
       res.status(500).json({ message: "Authorization check failed" });
     }
   };
+
+  // Test route to check if admin routes are working
+  app.get('/api/admin/test', isAuthenticated, isAdmin, async (req, res) => {
+    res.json({ message: "Admin route is working", userId: req.session.userId });
+  });
+
+  // Simple test route without admin check
+  app.get('/api/admin/simple-test', isAuthenticated, async (req, res) => {
+    res.json({ message: "Simple admin route is working", userId: req.session.userId });
+  });
+
+  // Admin user management routes
+  app.get('/api/admin/users', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      console.log('Fetching users for admin:', req.session.userId);
+      const users = await storage.getAllUsers();
+      console.log('Found users:', users.length);
+      res.json(users);
+    } catch (error) {
+      console.error("Error fetching users:", error);
+      res.status(500).json({ message: "Failed to fetch users" });
+    }
+  });
+
+  app.put('/api/admin/users/:userId', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { firstName, lastName, email, username, studentId, role } = req.body;
+      
+      const updatedUser = await storage.updateUser(userId, {
+        firstName,
+        lastName,
+        email,
+        username,
+        studentId,
+        role
+      });
+      
+      res.json(updatedUser);
+    } catch (error) {
+      console.error("Error updating user:", error);
+      res.status(500).json({ message: "Failed to update user" });
+    }
+  });
 
   // Contest routes
   app.get('/api/contests', isAuthenticated, async (req, res) => {
@@ -712,13 +760,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Contest participation
   app.post('/api/contests/:id/join', isAuthenticated, async (req: Request, res: Response) => {
     try {
-      console.log('Join contest route - session:', req.session);
-      console.log('Join contest route - userId:', req.session.userId);
+      // Debug logging removed to reduce log noise
       const userId = req.session.userId;
       if (!userId) {
         return res.status(401).json({ message: "User not found in session" });
       }
       const contestId = req.params.id;
+      
+      // Check if user is already disqualified from this contest
+      const existingParticipants = await storage.getContestParticipants(contestId);
+      const existingParticipant = existingParticipants.find(p => p.userId === userId);
+      
+      if (existingParticipant && existingParticipant.isDisqualified) {
+        return res.status(403).json({ message: "You are disqualified from this contest and cannot rejoin" });
+      }
       
       const participation = await storage.joinContest({
         contestId,
@@ -982,11 +1037,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       await storage.incrementTabSwitches(contestId, userId);
       
-      // Check if participant should be disqualified (after 2 tab switches)
+      // Check if participant should be disqualified (after 3 tab switches)
       const participants = await storage.getContestParticipants(contestId);
       const participant = participants.find(p => p.userId === userId);
       
-      if (participant && (participant.tabSwitches || 0) >= 1) { // Disqualify after 2nd switch
+      console.log('Tab switch - Participant:', participant);
+      console.log('Tab switches:', participant?.tabSwitches);
+      
+      if (participant && (participant.tabSwitches || 0) >= 3) { // Disqualify after 3rd switch
+        console.log('Disqualifying participant:', userId);
         await storage.disqualifyParticipant(contestId, userId);
         
         io.to(`user-${userId}`).emit('disqualified', {
@@ -997,10 +1056,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json({ disqualified: true });
       }
       
-      res.json({ warning: true, switches: (participant?.tabSwitches || 0) + 1 });
+      res.json({ warning: true, switches: (participant?.tabSwitches || 0) });
     } catch (error) {
       console.error("Error tracking tab switch:", error);
       res.status(500).json({ message: "Failed to track tab switch" });
+    }
+  });
+
+  app.get('/api/contests/:contestId/participants', isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const contestId = req.params.contestId;
+      
+      // Check if user is admin or contest creator
+      const contest = await storage.getContest(contestId);
+      if (!contest) {
+        return res.status(404).json({ message: "Contest not found" });
+      }
+      
+      const userId = req.session.userId;
+      if (!userId) {
+        return res.status(401).json({ message: "User not found in session" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (!user || (user.role !== 'admin' && contest.createdBy !== user.id)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const participants = await storage.getContestParticipants(contestId);
+      console.log('Participants data being sent:', participants);
+      res.json(participants);
+    } catch (error) {
+      console.error("Error fetching contest participants:", error);
+      res.status(500).json({ message: "Failed to fetch contest participants" });
+    }
+  });
+
+  app.get('/api/contests/:contestId/disqualified', isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) {
+        return res.status(401).json({ message: "User not found in session" });
+      }
+      const contestId = req.params.contestId;
+      
+      const isDisqualified = await storage.isUserDisqualified(contestId, userId);
+      res.json({ isDisqualified });
+    } catch (error) {
+      console.error("Error checking disqualification status:", error);
+      res.status(500).json({ message: "Failed to check disqualification status" });
+    }
+  });
+
+  app.post('/api/contests/:contestId/allow-retake', isAuthenticated, isAdmin, async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.body;
+      const contestId = req.params.contestId;
+      
+      if (!userId) {
+        return res.status(400).json({ message: "User ID is required" });
+      }
+      
+      await storage.allowDisqualifiedUserToRetake(contestId, userId);
+      res.json({ message: "User allowed to retake contest" });
+    } catch (error) {
+      console.error("Error allowing user to retake:", error);
+      res.status(500).json({ message: "Failed to allow user to retake" });
     }
   });
 

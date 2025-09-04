@@ -4,8 +4,10 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Code, Trophy, Users, Zap, ArrowRight, AlertCircle } from "lucide-react";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
+import { useLocation } from "wouter";
 
 export default function Landing() {
+  const [, setLocation] = useLocation();
   const [showAuthError, setShowAuthError] = useState(false);
 
   useEffect(() => {
@@ -86,7 +88,7 @@ export default function Landing() {
               transition={{ duration: 0.5, delay: 0.1 }}
             >
               <Button 
-                onClick={() => window.location.href = '/auth'}
+                onClick={() => setLocation('/auth')}
                 className="bg-gradient-to-r from-teal-500 to-indigo-600 hover:from-teal-600 hover:to-indigo-700 text-white font-medium px-6 py-2 rounded-lg transition-all duration-200 transform hover:scale-105"
                 data-testid="button-login"
               >
@@ -148,7 +150,7 @@ export default function Landing() {
 
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <Button 
-                  onClick={() => window.location.href = '/auth'}
+                  onClick={() => setLocation('/auth')}
                   size="lg"
                   className="bg-gradient-to-r from-teal-500 to-indigo-600 hover:from-teal-600 hover:to-indigo-700 text-white font-semibold px-8 py-4 rounded-xl text-lg transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl"
                   data-testid="button-get-started"
@@ -233,7 +235,7 @@ export default function Landing() {
               Join students who are advancing their programming capabilities through structured assessments
             </p>
             <Button 
-              onClick={() => window.location.href = '/auth'}
+              onClick={() => setLocation('/auth')}
               size="lg"
               variant="secondary"
               className="bg-white text-teal-600 hover:bg-slate-50 font-semibold px-8 py-4 rounded-xl text-lg transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl"

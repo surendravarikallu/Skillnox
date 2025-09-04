@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,7 @@ export default function ViewContest() {
   const { toast } = useToast();
   const { isAuthenticated, isLoading, user } = useAuth();
   const { contestId } = useParams();
+  const queryClient = useQueryClient();
 
   // Redirect to home if not authenticated
   useEffect(() => {
@@ -58,28 +59,77 @@ export default function ViewContest() {
   }, [user, toast]);
 
   // Fetch contest data
-  const { data: contest, isLoading: contestLoading } = useQuery({
+  const { data: contest, isLoading: contestLoading } = useQuery<any>({
     queryKey: ['/api/contests', contestId],
     enabled: !!contestId && !!user && user.role === 'admin',
   });
 
   // Fetch contest problems
-  const { data: problems } = useQuery({
+  const { data: problems } = useQuery<any[]>({
     queryKey: ['/api/contests', contestId, 'problems'],
     enabled: !!contestId && !!user && user.role === 'admin',
   });
 
   // Fetch contest MCQ questions
-  const { data: mcqQuestions } = useQuery({
-    queryKey: ['/api/contests', contestId, 'mcq'],
+  const { data: mcqQuestions } = useQuery<any[]>({
+    queryKey: ['/api/contests', contestId, 'mcq-questions'],
     enabled: !!contestId && !!user && user.role === 'admin',
   });
 
   // Fetch contest participants
-  const { data: participants } = useQuery({
+  const { data: participants } = useQuery<any[]>({
     queryKey: ['/api/contests', contestId, 'participants'],
     enabled: !!contestId && !!user && user.role === 'admin',
   });
+
+  // Debug logging to check participants data
+  useEffect(() => {
+    if (participants) {
+      console.log('Participants data:', participants);
+      const disqualifiedParticipants = participants.filter((p: any) => p.isDisqualified);
+      console.log('Disqualified participants:', disqualifiedParticipants);
+    }
+  }, [participants]);
+
+  // Allow retake mutation
+  const allowRetakeMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      const response = await fetch(`/api/contests/${contestId}/allow-retake`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ userId }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to allow retake');
+      }
+      
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: "User allowed to retake the contest",
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/contests', contestId, 'participants'] });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to allow user to retake",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleAllowRetake = (userId: string) => {
+    if (window.confirm("Are you sure you want to allow this user to retake the contest? This will reset their disqualification status and scores.")) {
+      allowRetakeMutation.mutate(userId);
+    }
+  };
 
   if (isLoading || !user) {
     return (
@@ -231,11 +281,12 @@ export default function ViewContest() {
 
         {/* Contest Details Tabs */}
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="problems">Problems</TabsTrigger>
             <TabsTrigger value="mcq">MCQ Questions</TabsTrigger>
             <TabsTrigger value="participants">Participants</TabsTrigger>
+            <TabsTrigger value="violations">Tab Violations</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
@@ -371,16 +422,29 @@ export default function ViewContest() {
                               {participant.user?.firstName} {participant.user?.lastName}
                             </h4>
                             <p className="text-sm text-slate-600">{participant.user?.email}</p>
+                            {participant.user?.studentId && (
+                              <p className="text-xs text-slate-500">ID: {participant.user.studentId}</p>
+                            )}
                           </div>
                           <div className="text-right">
                             <div className="text-lg font-bold text-slate-900">{participant.totalScore} points</div>
-                            <div className="text-sm text-slate-500">
+                            <div className="text-sm text-slate-500 mb-2">
                               {participant.isDisqualified ? (
-                                <span className="text-red-600">Disqualified</span>
+                                <span className="text-red-600 font-medium">Disqualified</span>
                               ) : (
-                                <span>Active</span>
+                                <span className="text-green-600 font-medium">Active</span>
                               )}
                             </div>
+                            {participant.isDisqualified && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleAllowRetake(participant.userId)}
+                                className="text-blue-600 hover:text-blue-700"
+                              >
+                                Allow Retake
+                              </Button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -391,6 +455,56 @@ export default function ViewContest() {
                     <Users className="w-16 h-16 text-slate-300 mx-auto mb-4" />
                     <h3 className="text-lg font-medium text-slate-900 mb-2">No participants yet</h3>
                     <p className="text-slate-600">Students will appear here once they join the contest</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="violations" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Students Over Tab Switch Limit</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {participants && participants.filter((p: any) => (p.tabSwitches || 0) >= 3).length > 0 ? (
+                  <div className="space-y-4">
+                    {participants.filter((p: any) => (p.tabSwitches || 0) >= 3).map((participant: any) => (
+                      <div key={participant.id} className="border border-slate-200 rounded-lg p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h4 className="font-semibold text-slate-900">
+                              {participant.user?.firstName} {participant.user?.lastName}
+                            </h4>
+                            <p className="text-sm text-slate-600">{participant.user?.email}</p>
+                            <p className="text-xs text-slate-500">Tab switches: {participant.tabSwitches || 0}</p>
+                            {participant.isDisqualified ? (
+                              <p className="text-xs text-red-600 font-medium">Status: Disqualified</p>
+                            ) : (
+                              <p className="text-xs text-yellow-600 font-medium">Status: Warning</p>
+                            )}
+                          </div>
+                          <div className="text-right">
+                            {participant.isDisqualified && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleAllowRetake(participant.userId)}
+                                className="text-blue-600 hover:text-blue-700"
+                              >
+                                Allow Retake
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <AlertTriangle className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-slate-900 mb-2">No violations over the limit</h3>
+                    <p className="text-slate-600">Students who exceed 3 tab switches will appear here</p>
                   </div>
                 )}
               </CardContent>

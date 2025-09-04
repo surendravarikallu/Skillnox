@@ -23,10 +23,11 @@ if (!DATABASE_URL) {
 }
 
 if (!DATABASE_URL) {
+  console.error("DATABASE_URL is not set. Please create a .env file with your database connection string.");
+  console.error("Example: DATABASE_URL=\"postgresql://user:password@localhost:5432/skillnox\"");
   throw new Error(
-    "DATABASE_URL must be set. Did you forget to provision a database?",
+    "DATABASE_URL must be set. Please create a .env file with your database connection string.",
   );
 }
-
 export const pool = new Pool({ connectionString: DATABASE_URL });
 export const db = drizzle({ client: pool, schema });

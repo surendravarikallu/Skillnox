@@ -21,6 +21,7 @@ import {
 import { motion } from "framer-motion";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
+import ProfileDialog from "@/components/profile-dialog";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -1108,6 +1109,7 @@ export default function ExportReports() {
               >
                 Back to Dashboard
               </Button>
+              {user && <ProfileDialog user={user} />}
               <Button 
                 onClick={handleLogout}
                 variant="outline"

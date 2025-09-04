@@ -88,7 +88,7 @@ export default function ContestTaking() {
   const [isRunning, setIsRunning] = useState(false);
   const [testCaseStatus, setTestCaseStatus] = useState<{[key: number]: 'pending' | 'running' | 'passed' | 'failed' | 'error'}>({});
   const [testCaseOutputs, setTestCaseOutputs] = useState<{[key: number]: any}>({});
-  const [tabSwitches, setTabSwitches] = useState(0);
+  // Tab switching is now handled by the AntiCheat component
   const [isContestFinished, setIsContestFinished] = useState(false);
   const [mcqResults, setMcqResults] = useState<Record<string, { isCorrect: boolean; earnedPoints: number; correctAnswers: string[] }>>({});
   const [testStartTime, setTestStartTime] = useState<Date | null>(null);
@@ -322,32 +322,27 @@ export default function ContestTaking() {
     setSubmissionResults(null);
   };
 
-  const handleTabSwitch = async () => {
+  const handleTabSwitch = async (violationType: string) => {
     if (!contestId || !user) return;
     
-    try {
-      const response = await apiRequest('POST', `/api/contests/${contestId}/tab-switch`, {});
-      const result = await response.json();
-      
-      if (result.disqualified) {
-        toast({
-          title: "Disqualified",
-          description: "You have been disqualified due to excessive tab switching.",
-          variant: "destructive",
-        });
-        setTimeout(() => {
-          window.location.href = "/";
-        }, 2000);
-      } else if (result.warning) {
-        setTabSwitches(result.switches);
-        toast({
-          title: "Warning",
-          description: `Tab switch detected. You have ${2 - result.switches} warnings left.`,
-          variant: "destructive",
-        });
+    // Report every tab switch and let server enforce the threshold (>=3)
+    if (violationType === 'tab_switch' || violationType === 'tab_switch_final' || violationType === 'tab_switch_limit') {
+      try {
+        const response = await apiRequest('POST', `/api/contests/${contestId}/tab-switch`, {});
+        const result = await response.json();
+        if (result?.disqualified) {
+          toast({
+            title: "Contest Failed",
+            description: "You exceeded the tab switch limit. Your contest was auto-submitted.",
+            variant: "destructive",
+          });
+          setTimeout(() => {
+            window.location.href = "/";
+          }, 2000);
+        }
+      } catch (error) {
+        console.error('Failed to track tab switch:', error);
       }
-    } catch (error) {
-      console.error('Failed to track tab switch:', error);
     }
   };
 
@@ -757,6 +752,30 @@ export default function ContestTaking() {
     });
   };
 
+  // Check if user is disqualified from this contest
+  const { data: disqualificationStatus } = useQuery({
+    queryKey: ['/api/contests', contestId, 'disqualified'],
+    queryFn: async () => {
+      const response = await apiRequest('GET', `/api/contests/${contestId}/disqualified`);
+      return response.json();
+    },
+    enabled: !!contestId && !!user,
+  });
+
+  // Redirect if disqualified
+  useEffect(() => {
+    if (disqualificationStatus?.isDisqualified) {
+      toast({
+        title: "Access Denied",
+        description: "You are disqualified from this contest and cannot participate.",
+        variant: "destructive",
+      });
+      setTimeout(() => {
+        window.location.href = "/";
+      }, 2000);
+    }
+  }, [disqualificationStatus, toast]);
+
   if (isLoading || !user) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -792,7 +811,7 @@ export default function ContestTaking() {
       <AntiCheat
         isActive={true}
         onViolation={handleTabSwitch}
-        maxTabSwitches={5}
+        maxTabSwitches={3}
         idleTimeout={30}
       />
 
@@ -823,7 +842,7 @@ export default function ContestTaking() {
                 </div>
                 <div>
                   <h1 className="text-xl font-bold bg-gradient-to-r from-teal-600 to-indigo-600 bg-clip-text text-transparent">
-                    CodeArena
+                    Skillnox
                   </h1>
                   <p className="text-xs text-slate-500">Coding Excellence Platform</p>
                 </div>
@@ -867,14 +886,14 @@ export default function ContestTaking() {
       </nav>
 
       {/* Contest Interface */}
-      <div className="max-w-full mx-auto h-screen bg-slate-50">
+      <div className="max-w-full mx-auto bg-slate-50">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
           {/* Tab Navigation */}
-          <div className="bg-white border-b border-slate-200 px-6">
-            <TabsList className="h-auto p-0 bg-transparent">
+          <div className="bg-white border-b border-slate-200 px-6 sticky top-16 z-40">
+            <TabsList className="h-auto p-0 bg-transparent flex gap-2 overflow-x-auto">
               <TabsTrigger 
                 value="problems" 
-                className="tab-active px-6 py-3 rounded-t-lg font-medium text-sm transition-all duration-200 hover:bg-slate-100 data-[state=active]:bg-gradient-to-r data-[state=active]:from-teal-500 data-[state=active]:to-indigo-600 data-[state=active]:text-white"
+                className="px-6 py-3 rounded-t-lg font-medium text-sm text-slate-600 hover:bg-slate-100 transition-all duration-200 data-[state=active]:bg-gradient-to-r data-[state=active]:from-teal-500 data-[state=active]:to-indigo-600 data-[state=active]:text-white"
                 data-testid="tab-problems"
               >
                 <Code className="mr-2 w-4 h-4" />
@@ -908,7 +927,7 @@ export default function ContestTaking() {
           </div>
 
           {/* Problems Tab */}
-          <TabsContent value="problems" className="flex-1 flex h-full m-0">
+          <TabsContent value="problems" className="flex-1 flex flex-col m-0 items-start">
             <div className="flex w-full h-full">
               {/* Left Panel - Problem Statement */}
               <div className="w-1/2 bg-white border-r border-slate-200 overflow-y-auto">
@@ -1054,7 +1073,26 @@ export default function ContestTaking() {
                 {/* Code Editor Header */}
                 <div className="bg-slate-800 border-b border-slate-700 px-4 py-3 flex items-center justify-between">
                   <div className="flex items-center space-x-4">
-                    <Select value={language} onValueChange={setLanguage}>
+                    <Select value={language} onValueChange={(lang) => {
+                      setLanguage(lang);
+                      // If the editor contains only the starter line(s), replace with language-specific starter
+                      const current = (editorRef.current?.getValue() || code).trim();
+                      const isDefault = current === "// Write your solution here" || current === "# Write your solution here";
+                      if (isDefault) {
+                        const starters: Record<string, string> = {
+                          javascript: "// Write your solution here\n",
+                          python: "# Write your solution here\n",
+                          python3: "# Write your solution here\n",
+                          java: "// Write your solution here\n",
+                          cpp: "// Write your solution here\n",
+                          c: "// Write your solution here\n",
+                          csharp: "// Write your solution here\n",
+                        };
+                        const starter = starters[lang] || "// Write your solution here\n";
+                        setCode(starter);
+                        editorRef.current?.setValue(starter);
+                      }
+                    }}>
                       <SelectTrigger className="w-32 bg-slate-700 text-white border-slate-600">
                         <SelectValue />
                       </SelectTrigger>
@@ -1283,8 +1321,9 @@ export default function ContestTaking() {
           </TabsContent>
 
           {/* MCQ Tab */}
-          <TabsContent value="mcq" className="flex-1 p-6 m-0">
+          <TabsContent value="mcq" className="flex-1 flex flex-col m-0 items-start">
             <div className="max-w-4xl mx-auto">
+              {/* Debug: MCQ Tab Content Rendering */}
               {mcqQuestions && mcqQuestions.length > 0 ? (
                 <>
                   {!isContestFinished ? (
@@ -1579,14 +1618,14 @@ export default function ContestTaking() {
           </TabsContent>
 
           {/* Leaderboard Tab */}
-          <TabsContent value="leaderboard" className="flex-1 p-6 m-0">
+          <TabsContent value="leaderboard" className="flex-1 flex flex-col m-0 items-start">
             <div className="max-w-4xl mx-auto">
               <Leaderboard contestId={contestId!} currentUserId={user?.id} />
             </div>
           </TabsContent>
 
           {/* Submissions Tab */}
-          <TabsContent value="submissions" className="flex-1 p-6 m-0">
+          <TabsContent value="submissions" className="flex-1 flex flex-col m-0 items-start">
             <div className="max-w-4xl mx-auto">
               <Card>
                 <div className="p-6 border-b border-slate-200">

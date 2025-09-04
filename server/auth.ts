@@ -31,8 +31,7 @@ export function setupSession(app: Express) {
 
 // Middleware to check if user is authenticated
 export function isAuthenticated(req: Request, res: Response, next: NextFunction) {
-  console.log('isAuthenticated middleware - session:', req.session);
-  console.log('isAuthenticated middleware - userId:', req.session?.userId);
+  // Debug logging removed to reduce log noise
   if (req.session?.userId) {
     next();
   } else {

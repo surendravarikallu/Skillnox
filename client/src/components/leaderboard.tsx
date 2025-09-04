@@ -27,7 +27,7 @@ export default function Leaderboard({ contestId, currentUserId }: LeaderboardPro
   const [socket, setSocket] = useState<Socket | null>(null);
   const [liveUpdates, setLiveUpdates] = useState<any[]>([]);
 
-  const { data: leaderboard, isLoading, refetch } = useQuery({
+  const { data: leaderboard, isLoading, refetch } = useQuery<any[]>({
     queryKey: ['/api/contests', contestId, 'leaderboard'],
     refetchInterval: 30000, // Refetch every 30 seconds as fallback
   });
