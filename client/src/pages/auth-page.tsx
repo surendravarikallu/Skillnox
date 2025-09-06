@@ -87,6 +87,11 @@ export default function AuthPage() {
                   Skillnox
                 </h1>
                 <p className="text-sm text-slate-500">Coding Excellence Platform</p>
+                <div className="flex items-center space-x-1 mt-1">
+                  <span className="text-xs text-slate-400">⚡</span>
+                  <span className="text-xs text-slate-400">Powered by</span>
+                  <span className="text-xs font-medium text-slate-600">KITS Akshar Institute of Technology</span>
+                </div>
               </div>
             </div>
           </div>

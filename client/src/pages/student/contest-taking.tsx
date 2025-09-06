@@ -90,6 +90,7 @@ export default function ContestTaking() {
   const [testCaseOutputs, setTestCaseOutputs] = useState<{[key: number]: any}>({});
   // Tab switching is now handled by the AntiCheat component
   const [isContestFinished, setIsContestFinished] = useState(false);
+  const [isContestSubmitted, setIsContestSubmitted] = useState(false);
   const [mcqResults, setMcqResults] = useState<Record<string, { isCorrect: boolean; earnedPoints: number; correctAnswers: string[] }>>({});
   const [testStartTime, setTestStartTime] = useState<Date | null>(null);
   const [testCompletionTime, setTestCompletionTime] = useState<Date | null>(null);
@@ -476,6 +477,10 @@ export default function ContestTaking() {
   };
 
   const submitCode = () => {
+    if (isContestSubmitted) {
+      toast({ title: "Contest submitted", description: "You cannot submit again.", variant: "destructive" });
+      return;
+    }
     if (!currentProblem || !testCases) return;
     
     // Reset test case statuses for submission
@@ -579,6 +584,22 @@ export default function ContestTaking() {
         });
       }
     });
+  };
+
+  // Finish contest: mark submitted then redirect
+  const finishContest = async () => {
+    try {
+      const resp = await apiRequest('POST', `/api/contests/${contestId}/submit`, {});
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({} as any));
+        throw new Error(err.message || 'Failed to submit contest');
+      }
+      setIsContestSubmitted(true);
+      toast({ title: 'Contest Submitted', description: 'Returning to contests...' });
+      setTimeout(() => { window.location.href = '/contests'; }, 800);
+    } catch (e) {
+      toast({ title: 'Submit Failed', description: e instanceof Error ? e.message : 'Please try again', variant: 'destructive' });
+    }
   };
 
   const handleMcqAnswer = (questionId: string, optionIndex: string, isMultiple: boolean) => {
@@ -743,6 +764,8 @@ export default function ContestTaking() {
       onSuccess: () => {
         setTestCompletionTime(new Date());
         setIsContestFinished(true);
+        // Mark contest submitted on end of MCQ round
+        finishContest();
         toast({
           title: "Round Completed!",
           description: "Your answers have been submitted. View your results below.",
@@ -761,6 +784,23 @@ export default function ContestTaking() {
     },
     enabled: !!contestId && !!user,
   });
+
+  // Fetch contest status (submitted/disqualified) and block if already submitted
+  const { data: contestStatus } = useQuery({
+    queryKey: ['/api/contests', contestId, 'status'],
+    queryFn: async () => {
+      const response = await apiRequest('GET', `/api/contests/${contestId}/status`);
+      return await response.json();
+    },
+    enabled: !!contestId,
+    staleTime: 15000,
+  });
+
+  useEffect(() => {
+    if (contestStatus?.isSubmitted) {
+      setIsContestSubmitted(true);
+    }
+  }, [contestStatus]);
 
   // Redirect if disqualified
   useEffect(() => {
@@ -845,6 +885,11 @@ export default function ContestTaking() {
                     Skillnox
                   </h1>
                   <p className="text-xs text-slate-500">Coding Excellence Platform</p>
+                  <div className="flex items-center space-x-1 mt-1">
+                    <span className="text-xs text-slate-400">⚡</span>
+                    <span className="text-xs text-slate-400">Powered by</span>
+                    <span className="text-xs font-medium text-slate-600">KITS Akshar Institute of Technology</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -887,6 +932,18 @@ export default function ContestTaking() {
 
       {/* Contest Interface */}
       <div className="max-w-full mx-auto bg-slate-50">
+        {isContestSubmitted ? (
+          <div className="p-12 text-center max-w-2xl mx-auto">
+            <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CheckCircle className="w-8 h-8 text-white" />
+            </div>
+            <h2 className="text-2xl font-bold text-slate-900 mb-2">Contest Already Submitted</h2>
+            <p className="text-slate-600 mb-6">You have already submitted this contest and cannot participate again.</p>
+            <Button onClick={() => (window.location.href = '/contests')} className="bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700">
+              Return to Contests
+            </Button>
+          </div>
+        ) : (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
           {/* Tab Navigation */}
           <div className="bg-white border-b border-slate-200 px-6 sticky top-16 z-40">
@@ -1312,6 +1369,17 @@ export default function ContestTaking() {
                             <div>Memory Usage: {submissionResults.memoryUsage}MB</div>
                           )}
                         </div>
+                        {submissionResults.status === 'accepted' && !isContestSubmitted && (
+                          <div className="mt-3">
+                            <Button
+                              onClick={finishContest}
+                              className="bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700"
+                              data-testid="button-finish-and-return"
+                            >
+                              Finish & Return to Contests
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1708,6 +1776,7 @@ export default function ContestTaking() {
             </div>
           </TabsContent>
         </Tabs>
+        )}
       </div>
     </div>
   );

@@ -79,6 +79,11 @@ export default function Landing() {
                   Skillnox
                 </h1>
                 <p className="text-xs text-slate-500">Programming Skill Evaluation Platform</p>
+                <div className="flex items-center space-x-1 mt-1">
+                  <span className="text-xs text-slate-400">⚡</span>
+                  <span className="text-xs text-slate-400">Powered by</span>
+                  <span className="text-xs font-medium text-slate-600">KITS Akshar Institute of Technology</span>
+                </div>
               </div>
             </motion.div>
 
@@ -142,6 +147,12 @@ export default function Landing() {
                   Skillnox
                 </span>
               </h1>
+              
+              <div className="flex items-center justify-center space-x-2 mt-4">
+                <span className="text-lg text-slate-500">⚡</span>
+                <span className="text-lg text-slate-500">Powered by</span>
+                <span className="text-lg font-semibold text-slate-700">KITS Akshar Institute of Technology</span>
+              </div>
 
               <p className="text-xl text-slate-600 max-w-3xl mx-auto leading-relaxed">
                 Demonstrate your programming expertise through comprehensive assessments. 
@@ -254,7 +265,14 @@ export default function Landing() {
             <div className="w-8 h-8 bg-gradient-to-br from-teal-500 to-indigo-600 rounded-lg flex items-center justify-center">
               <Code className="text-white text-sm" />
             </div>
-            <span className="text-xl font-bold">Skillnox</span>
+            <div className="text-center">
+              <span className="text-xl font-bold">Skillnox</span>
+              <div className="flex items-center justify-center space-x-1 mt-1">
+                <span className="text-sm text-slate-400">⚡</span>
+                <span className="text-sm text-slate-400">Powered by</span>
+                <span className="text-sm font-medium text-slate-300">KITS Akshar Institute of Technology</span>
+              </div>
+            </div>
           </div>
           <p className="text-slate-400">
             © 2025 Developed by Varikallu Surendra(23JK1A05I7) & T&P CELL || Skillnox. Advancing programming excellence through comprehensive skill evaluation.

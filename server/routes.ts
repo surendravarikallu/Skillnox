@@ -904,6 +904,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userId: userId
       });
       
+      // Block new submissions if user already submitted contest
+      const existingParticipant = await storage.getContestParticipant(submissionData.contestId, userId);
+      if (existingParticipant?.submittedAt) {
+        return res.status(403).json({ message: "Contest already submitted" });
+      }
+
       const submission = await storage.createSubmission(submissionData);
       
       // If it's a programming problem, evaluate the code
@@ -926,6 +932,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
               evaluationResult.memoryUsage
             );
             
+            // After updating submission, recalculate participant's total score
+            try {
+              await storage.recalculateAndUpdateParticipantScore(submission.contestId, submission.userId);
+            } catch (aggErr) {
+              console.error('Failed to recalculate participant score:', aggErr);
+            }
+
             // Emit real-time update
             io.to(`contest-${submission.contestId}`).emit('submission-update', {
               submissionId: submission.id,
@@ -934,6 +947,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               score: evaluationResult.score,
               testResults: evaluationResult.testResults
             });
+
+            // Notify leaderboard listeners
+            io.to(`contest-${submission.contestId}`).emit('leaderboard-update');
             
             return res.json({
               ...submission,
@@ -968,6 +984,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error creating submission:", error);
       res.status(500).json({ message: "Failed to create submission" });
+    }
+  });
+
+  // Mark contest as submitted/completed by student
+  app.post('/api/contests/:contestId/submit', isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) {
+        return res.status(401).json({ message: "User not found in session" });
+      }
+
+      const contestId = req.params.contestId;
+      await storage.recalculateAndUpdateParticipantScore(contestId, userId);
+      await storage.markContestSubmitted(contestId, userId);
+
+      // Notify leaderboard listeners
+      io.to(`contest-${contestId}`).emit('leaderboard-update');
+      res.json({ ok: true });
+    } catch (error) {
+      console.error("Error submitting contest:", error);
+      res.status(500).json({ message: "Failed to submit contest" });
+    }
+  });
+
+  // Get current user's contest status (submitted/disqualified)
+  app.get('/api/contests/:contestId/status', isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) {
+        return res.status(401).json({ message: "User not found in session" });
+      }
+      const contestId = req.params.contestId;
+      const participant = await storage.getContestParticipant(contestId, userId);
+      res.json({
+        isSubmitted: !!participant?.submittedAt,
+        isDisqualified: !!participant?.isDisqualified,
+        submittedAt: participant?.submittedAt ?? null,
+      });
+    } catch (error) {
+      console.error("Error fetching contest status:", error);
+      res.status(500).json({ message: "Failed to fetch contest status" });
     }
   });
 

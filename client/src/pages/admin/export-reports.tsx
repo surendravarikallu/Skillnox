@@ -216,6 +216,10 @@ export default function ExportReports() {
        doc.setTextColor(219, 234, 254); // blue-100
        doc.text('Professional Contest Management System', 20, 35);
        
+       doc.setFontSize(10);
+       doc.setTextColor(200, 200, 200); // light gray
+       doc.text('⚡ Powered by KITS Akshar Institute of Technology', 20, 45);
+       
        // Add report title
        doc.setFontSize(20);
        doc.setTextColor(30, 41, 59); // slate-800
@@ -278,6 +282,7 @@ export default function ExportReports() {
          doc.setTextColor(100, 116, 139); // slate-500
          doc.text(`Page ${i} of ${pageCount}`, 20, 290);
          doc.text('Skillnox - Professional Contest Management System', 20, 295);
+         doc.text('⚡ Powered by KITS Akshar Institute of Technology', 20, 300);
          doc.text(`Report ID: ${Date.now()}`, 150, 290);
        }
 

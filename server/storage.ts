@@ -79,6 +79,9 @@ export interface IStorage {
   updateParticipantScore(contestId: string, userId: string, score: number): Promise<void>;
   incrementTabSwitches(contestId: string, userId: string): Promise<void>;
   disqualifyParticipant(contestId: string, userId: string): Promise<void>;
+  recalculateAndUpdateParticipantScore(contestId: string, userId: string): Promise<void>;
+  getContestParticipant(contestId: string, userId: string): Promise<ContestParticipant | undefined>;
+  markContestSubmitted(contestId: string, userId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -542,6 +545,45 @@ export class DatabaseStorage implements IStorage {
           eq(contestParticipants.userId, userId)
         )
       );
+  }
+
+  // Recalculate total score as sum of best score per problem for this participant within the contest
+  async recalculateAndUpdateParticipantScore(contestId: string, userId: string): Promise<void> {
+    // Get all submissions for this user and contest
+    const userSubs = await db
+      .select({ problemId: submissions.problemId, score: submissions.score })
+      .from(submissions)
+      .where(and(eq(submissions.contestId, contestId), eq(submissions.userId, userId)));
+
+    // Group by problemId and take max score per problem
+    const bestByProblem = new Map<string, number>();
+    for (const sub of userSubs) {
+      const key = sub.problemId || '';
+      if (!key) continue;
+      const prev = bestByProblem.get(key) ?? 0;
+      const val = typeof sub.score === 'number' ? sub.score : 0;
+      if (val > prev) bestByProblem.set(key, val);
+    }
+
+    let total = 0;
+    for (const v of bestByProblem.values()) total += v;
+
+    await this.updateParticipantScore(contestId, userId, total);
+  }
+
+  async getContestParticipant(contestId: string, userId: string): Promise<ContestParticipant | undefined> {
+    const [participant] = await db
+      .select()
+      .from(contestParticipants)
+      .where(and(eq(contestParticipants.contestId, contestId), eq(contestParticipants.userId, userId)));
+    return participant;
+  }
+
+  async markContestSubmitted(contestId: string, userId: string): Promise<void> {
+    await db
+      .update(contestParticipants)
+      .set({ submittedAt: new Date() })
+      .where(and(eq(contestParticipants.contestId, contestId), eq(contestParticipants.userId, userId)));
   }
 
   async isUserDisqualified(contestId: string, userId: string): Promise<boolean> {
